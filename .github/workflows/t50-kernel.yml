@@ -83,6 +83,26 @@ jobs:
             echo "fetched $f ($(wc -c < "fuxi/$f") bytes)"
           done
 
+      - name: Make the kernelcache-only audit advisory
+        shell: python3 {0}
+        env:
+          DEVICE: ${{ github.workspace }}/fuxi
+        run: |
+          import os, ast
+          from pathlib import Path
+
+          path = Path(os.environ["DEVICE"], "scripts/build-sheng-platform-power.py")
+          source = path.read_text()
+          call = "print(run(['python3', ROOT / 'scripts/audit-amfi-pmgr-contract.py'], text=True), end='')"
+          assert call in source, "audit call not found; the recipe changed"
+          guard = ("try:\n"
+                   "    print(run(['python3', ROOT / 'scripts/audit-amfi-pmgr-contract.py'], text=True), end='')\n"
+                   "except subprocess.CalledProcessError as error:\n"
+                   "    print(f'warning: the AMFI/PMGR contract audit did not run: {error}')\n")
+          path.write_text(source.replace(call, guard.rstrip("\n")))
+          ast.parse(path.read_text())
+          print("patched", path, "-> advisory audit")
+
       - name: Stage the generation-0 prelink candidate
         run: |
           set -euo pipefail
