@@ -2,6 +2,14 @@ name: fuxi t50 kernel
 
 on:
   workflow_dispatch:
+    inputs:
+      display:
+        description: "stub the display archive, or build it for real"
+        type: choice
+        options:
+          - stub
+          - real
+        default: stub
 
 permissions:
   contents: read
@@ -230,7 +238,7 @@ jobs:
           xcrun ar rcs "$GITHUB_WORKSPACE/unixnu/stage-a/libVerifiedRootProbe.a" "$GITHUB_WORKSPACE/unixnu/stage-a/verified.o"
           echo "stubbed the display and the verified-root archives"
 
-      - name: Drop the display archive and link the stub instead
+      - name: Teach the legacy generator the leaf contract
         shell: python3 {0}
         env:
           DEVICE: ${{ github.workspace }}/fuxi
@@ -238,26 +246,56 @@ jobs:
           import os
           from pathlib import Path
 
-          board = Path(os.environ["DEVICE"], "board.toml")
-          text = board.read_text()
-          dropped = ('"build-native-legacy-display.py',
-                     '"build-adreno740-kits.py',
-                     '"build-adreno740-accelerator.py')
-          kept = [line for line in text.splitlines()
-                  if not line.strip().startswith(dropped)]
-          assert len(kept) < len(text.splitlines()), "none of the stubbed recipes was in the archives list"
-          board.write_text("\n".join(kept) + "\n")
+          path = Path(os.environ["DEVICE"], "scripts/build-native-legacy-display.py")
+          body = path.read_text()
+          anchor = "struct OriginalLegacySwapRequest;"
+          assert body.count(anchor) == 1, "the generator no longer forward-declares the swap request"
+
+          block = "\n".join([
+              anchor,
+              "// Original state request (skip/requested and skip/powered word pairs, then the changed flag).",
+              "struct OriginalLegacyStateRequest {uint32_t skipRequested,requested,skipPowered,powered;uint8_t changed;uint8_t pad[11];};",
+              "// Original field offsets: vsync client queue in the display; rectangles, masks, options, dimensions, surfaces in a swap request.",
+              "static constexpr unsigned kLegacyVsyncClients=5592;",
+              "static constexpr unsigned kRequestRect0=17,kRequestRect1=81,kRequestMasks=792,kRequestOptions=804,kRequestDims=816,kRequestSurfaces=2624;",
+              "#define NATIVE_LEGACY_LEAVES(LEAF) LEAF(211) LEAF(245) LEAF(246) LEAF(306) LEAF(307) LEAF(338) LEAF(345)",
+          ])
+          path.write_text(body.replace(anchor, block, 1))
+          print("taught the generator the state request, the request offsets and the guarded leaves")
+
+      - name: Drop the display archive and link the stub instead
+        shell: python3 {0}
+        env:
+          DEVICE: ${{ github.workspace }}/fuxi
+          DISPLAY: ${{ inputs.display || 'stub' }}
+        run: |
+          import os
+          from pathlib import Path
+
+          real = os.environ.get("DISPLAY") == "real"
+
+          if not real:
+              board = Path(os.environ["DEVICE"], "board.toml")
+              text = board.read_text()
+              dropped = ('"build-native-legacy-display.py',
+                         '"build-adreno740-kits.py',
+                         '"build-adreno740-accelerator.py')
+              kept = [line for line in text.splitlines()
+                      if not line.strip().startswith(dropped)]
+              assert len(kept) < len(text.splitlines()), "none of the stubbed recipes was in the archives list"
+              board.write_text("\n".join(kept) + "\n")
 
           cfg = Path(os.environ["DEVICE"], "configs/fuxi_full_defconfig")
           lines = cfg.read_text().splitlines()
-          extra = 'CONFIG_XNU_EXTRA_LD_ARCHIVES="'
-          for i, line in enumerate(lines):
-              if line.startswith(extra):
-                  assert line.endswith('"'), f"unexpected archives line: {line}"
-                  lines[i] = line[:-1] + ' {tree}/../../../stage-a/libStageAStub.a"'
-                  break
-          else:
-              raise SystemExit("no CONFIG_XNU_EXTRA_LD_ARCHIVES line")
+          if not real:
+              extra = 'CONFIG_XNU_EXTRA_LD_ARCHIVES="'
+              for i, line in enumerate(lines):
+                  if line.startswith(extra):
+                      assert line.endswith('"'), f"unexpected archives line: {line}"
+                      lines[i] = line[:-1] + ' {tree}/../../../stage-a/libStageAStub.a"'
+                      break
+              else:
+                  raise SystemExit("no CONFIG_XNU_EXTRA_LD_ARCHIVES line")
 
           verified = 'CONFIG_XNU_VERIFIED_ROOT_ARCHIVE="'
           for i, line in enumerate(lines):
@@ -275,7 +313,8 @@ jobs:
           stale = "UFS_ARCHIVE=$ROOT/build/sheng-ufs/libShengUfs.a"
           assert body.count(stale) == 1, "the script no longer holds the stale sheng-ufs path"
           script.write_text(body.replace(stale, "UFS_ARCHIVE=$ROOT/build/native-ufs/libNativeUfs.a"))
-          print("dropped the display archive, appended the stubs and pointed UFS at the built archive")
+          print("display mode %s: kept the display archive" % ("real" if real else "stub"),
+                "and pointed UFS at the built archive")
 
       - name: Configure
         working-directory: unixnu
