@@ -27,6 +27,9 @@ jobs:
   stage-a:
     runs-on: macos-26
     timeout-minutes: 300
+    env:
+      # prepare-xnu-source.py reads the DriverKit headers over the GitHub API; the anonymous quota is 403 here.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Clone UniXNU, the device repository and the UEFI port
         run: |
