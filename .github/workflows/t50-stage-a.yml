@@ -89,15 +89,16 @@ jobs:
 
           device = pathlib.Path('../unixnu-fuxi')
           source = (device / 'configs/fuxi_full_defconfig').read_text()
-          # No storage or display archive on stage A: the link only has to
-          # produce a Mach-O the prelink step accepts.
+          # No storage, graphics or ordered archives on stage A: the link only has to produce a Mach-O the prelink
+          # step accepts, and every archive recipe needs a prelink candidate that cannot exist yet.
+          drop = ('CONFIG_XNU_NATIVE_', 'CONFIG_XNU_VERIFIED_', 'CONFIG_XNU_OWNER_', 'CONFIG_XNU_SHENG_',
+                  'CONFIG_XNU_BUILD_ARCHIVES', 'CONFIG_XNU_EXTRA_LD_ARCHIVES')
           lines = []
           for line in source.splitlines():
-              if line.startswith('CONFIG_XNU_EXTRA_LD_ARCHIVES='):
-                  line = 'CONFIG_XNU_EXTRA_LD_ARCHIVES="{tree}/build/staga/libStageAStub.a"'
-              elif line.startswith('CONFIG_XNU_OWNER_DATA_MOUNT='):
-                  line = '# ' + line
+              if line.startswith(drop) or (line.startswith('CONFIG_XNU_') and '_ARCHIVE' in line):
+                  line = '# stage A: ' + line
               lines.append(line)
+          lines.append('CONFIG_XNU_EXTRA_LD_ARCHIVES="{tree}/build/staga/libStageAStub.a"')
           (device / 'configs/fuxi_stage_a_defconfig').write_text('\n'.join(lines) + '\n')
 
           board = (device / 'board.toml').read_text()
