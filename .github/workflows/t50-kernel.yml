@@ -238,16 +238,8 @@ jobs:
           _native_verified_root_probe:
             mov x0, #0
             ret
-          .globl _native_verified_block_manifest_sha384
-          _native_verified_block_manifest_sha384:
-            ret
-          .globl _native_verified_block_root_authorized
-          _native_verified_block_root_authorized:
-            mov x0, #0
-            ret
-          .globl _native_verified_block_volume_device
-          _native_verified_block_volume_device:
-            mov x0, #0
+          .globl _stage_a_verified_anchor
+          _stage_a_verified_anchor:
             ret
           ASM
           xcrun clang -target arm64-apple-ios17.0 -c "$GITHUB_WORKSPACE/unixnu/stage-a/verified.s" -o "$GITHUB_WORKSPACE/unixnu/stage-a/verified.o"
