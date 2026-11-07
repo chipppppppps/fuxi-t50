@@ -1,4 +1,4 @@
-name: fuxi t50 stage A (macOS)
+﻿name: fuxi t50 stage A (macOS)
 
 # Stage A of the t50 bootstrap.
 #
@@ -92,7 +92,8 @@ jobs:
           # No storage, graphics or ordered archives on stage A: the link only has to produce a Mach-O the prelink
           # step accepts, and every archive recipe needs a prelink candidate that cannot exist yet.
           drop = ('CONFIG_XNU_NATIVE_', 'CONFIG_XNU_VERIFIED_', 'CONFIG_XNU_OWNER_', 'CONFIG_XNU_SHENG_',
-                  'CONFIG_XNU_BUILD_ARCHIVES', 'CONFIG_XNU_EXTRA_LD_ARCHIVES')
+                  'CONFIG_XNU_BUILD_ARCHIVES', 'CONFIG_XNU_EXTRA_LD_ARCHIVES',
+                  'CONFIG_XNU_BOOT_PROGRESS')
           lines = []
           for line in source.splitlines():
               if line.startswith(drop) or (line.startswith('CONFIG_XNU_') and '_ARCHIVE' in line):
