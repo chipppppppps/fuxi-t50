@@ -95,15 +95,21 @@ jobs:
           import os
           from pathlib import Path
 
-          dsc = Path(os.environ["UEFI"], "Platforms/Xiaomi/fuxiPkg/fuxi.dsc")
-          raw = dsc.read_bytes()
-          encoding = "utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8"
-          text = raw.decode(encoding)
-          lines = text.splitlines(keepends=True)
-          dropped = ("AdvancedLogViewLib", "FuxiUfsLogDxe/FuxiUfsLogDxe.inf", "FuxiUefiLogDxe/FuxiUefiLogDxe.inf")
-          kept = [line for line in lines if not any(name in line for name in dropped)]
-          assert len(kept) == len(lines) - 3, "the platform description no longer names the log view library and its two drivers once"
-          dsc.write_bytes("".join(kept).encode(encoding))
+          dropped = ("AdvancedLogViewLib", "FuxiUfsLogDxe", "FuxiUefiLogDxe")
+          pkg = Path(os.environ["UEFI"], "Platforms/Xiaomi/fuxiPkg")
+          total = 0
+          for name in ("fuxi.dsc", "Include/DXE.inc"):
+              path = pkg / name
+              raw = path.read_bytes()
+              encoding = "utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8"
+              lines = raw.decode(encoding).splitlines(keepends=True)
+              kept = [line for line in lines if not any(word in line for word in dropped)]
+              removed = len(lines) - len(kept)
+              assert removed >= 1, f"no log view reference left in {name}"
+              path.write_bytes("".join(kept).encode(encoding))
+              total += removed
+              print(f"{name}: dropped {removed} line(s)")
+          assert total >= 5, f"only {total} log view lines dropped, expected the library mapping and both drivers"
           print("dropped the log view library and the two drivers that need it: the UniXNU package in this tree ships no such library")
 
       - name: Make the persistent Data volume optional for a display probe
