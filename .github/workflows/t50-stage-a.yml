@@ -130,7 +130,7 @@ jobs:
           printf '.section __TEXT,__text,regular,pure_instructions\n' > build/staga/stubs.s
           printf '.globl _stage_a_placeholder\n_stage_a_placeholder:\n\tret\n' >> build/staga/stubs.s
           link_stub() {
-            xcrun clang -arch arm64 -c build/staga/stubs.s -o "$STUBDIR/stubs.o"
+            xcrun clang -target arm64-apple-ios17.0 -c build/staga/stubs.s -o "$STUBDIR/stubs.o"
             xcrun ar rcs "$STUBDIR/libStageAStub.a" "$STUBDIR/stubs.o"
           }
           link_stub
