@@ -47,6 +47,22 @@ jobs:
           ref: old
           path: uefi-fuxi
 
+      - name: Stage the two drivers the display recipe expects
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/fuxi/drivers"
+          for repo in NativeHidInput NativeKeyStoreEvents; do
+            if [ -f "$repo/$repo.cpp" ]; then
+              echo "$repo: already staged"
+              continue
+            fi
+            rm -rf "$repo"
+            git clone --depth 1 "https://github.com/UniXNU/$repo.git" "$repo"
+            test -f "$repo/$repo.cpp"
+            echo "$repo: $(wc -c < "$repo/$repo.cpp") bytes"
+          done
+          ls -1 "$GITHUB_WORKSPACE/fuxi/drivers"
+
       - name: Select Xcode
         run: |
           for app in /Applications/Xcode_26*.app; do
