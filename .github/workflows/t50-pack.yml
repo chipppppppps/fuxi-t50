@@ -158,9 +158,12 @@ jobs:
           brew list dtc >/dev/null 2>&1 || brew install dtc
           brew list mtools >/dev/null 2>&1 || brew install mtools
           brew list llvm >/dev/null 2>&1 || brew install llvm
+          brew list lld >/dev/null 2>&1 || brew install lld
           echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
           command -v fdtget || ls /opt/homebrew/bin/fdtget
           ls "$(brew --prefix llvm)/bin/llvm-nm"
+          ls "$(brew --prefix lld)/bin/ld.lld"
 
       - name: Configure
         working-directory: unixnu
