@@ -216,8 +216,8 @@ jobs:
 
           board = Path(os.environ["DEVICE"], "board.toml")
           text = board.read_text()
-          drop = " build-native-legacy-display.py"
-          kept = [line for line in text.splitlines() if drop not in line]
+          kept = [line for line in text.splitlines()
+                  if not line.strip().startswith('"build-native-legacy-display.py')]
           assert len(kept) < len(text.splitlines()), "legacy display recipe not in the archives list"
           board.write_text("\n".join(kept) + "\n")
 
