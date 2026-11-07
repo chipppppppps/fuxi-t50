@@ -208,6 +208,27 @@ jobs:
           xcrun clang -target arm64-apple-ios17.0 -c "$GITHUB_WORKSPACE/unixnu/stage-a/stubs.s" -o "$GITHUB_WORKSPACE/unixnu/stage-a/stubs.o"
           xcrun ar rcs "$GITHUB_WORKSPACE/unixnu/stage-a/libStageAStub.a" "$GITHUB_WORKSPACE/unixnu/stage-a/stubs.o"
           xcrun nm "$GITHUB_WORKSPACE/unixnu/stage-a/libStageAStub.a" | head -10
+          cat > "$GITHUB_WORKSPACE/unixnu/stage-a/verified.s" <<'ASM'
+          .text
+          .globl _native_verified_root_probe
+          _native_verified_root_probe:
+            mov x0, #0
+            ret
+          .globl _native_verified_block_manifest_sha384
+          _native_verified_block_manifest_sha384:
+            ret
+          .globl _native_verified_block_root_authorized
+          _native_verified_block_root_authorized:
+            mov x0, #0
+            ret
+          .globl _native_verified_block_volume_device
+          _native_verified_block_volume_device:
+            mov x0, #0
+            ret
+          ASM
+          xcrun clang -target arm64-apple-ios17.0 -c "$GITHUB_WORKSPACE/unixnu/stage-a/verified.s" -o "$GITHUB_WORKSPACE/unixnu/stage-a/verified.o"
+          xcrun ar rcs "$GITHUB_WORKSPACE/unixnu/stage-a/libVerifiedRootProbe.a" "$GITHUB_WORKSPACE/unixnu/stage-a/verified.o"
+          echo "stubbed the display and the verified-root archives"
 
       - name: Drop the display archive and link the stub instead
         shell: python3 {0}
@@ -237,8 +258,18 @@ jobs:
                   break
           else:
               raise SystemExit("no CONFIG_XNU_EXTRA_LD_ARCHIVES line")
+
+          verified = 'CONFIG_XNU_VERIFIED_ROOT_ARCHIVE="'
+          for i, line in enumerate(lines):
+              if line.startswith(verified):
+                  assert line.endswith('"'), f"unexpected verified root line: {line}"
+                  lines[i] = verified + '{tree}/../../../stage-a/libVerifiedRootProbe.a"'
+                  break
+          else:
+              raise SystemExit("no CONFIG_XNU_VERIFIED_ROOT_ARCHIVE line")
+
           cfg.write_text("\n".join(lines) + "\n")
-          print("dropped the display archive and appended the stub to the link line")
+          print("dropped the display archive and appended the stubs to the link lines")
 
       - name: Configure
         working-directory: unixnu
