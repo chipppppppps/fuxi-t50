@@ -374,6 +374,21 @@ jobs:
           assert body.count(ram_object_stale) == 1, "the script no longer holds the stale ram-block object path"
           body = body.replace(ram_object_stale,
                               "RAM_BLOCK_OBJECT=${XNU_NATIVE_RAM_BLOCK_OBJECT:-$ROOT/build/native-ram-block/NativeRamBlock.o}")
+          # The driver build only exports the CONFIG_ keys it knows about, so the
+          # stub archives configured through CONFIG_XNU_EXTRA_LD_ARCHIVES never
+          # reach the link line. Force-load whatever Stage A produced, in place.
+          make_args = '  EXTRA_MAKE_ARGS+=("LD_KERNEL_ARCHIVES=$KERNEL_EXTRA_ARCHIVES")'
+          assert body.count(make_args) == 1, "the script no longer builds the archive argument list"
+          stage_a = "\n".join([
+              '  for stub in "$ROOT/../../../stage-a/libStageAStub.a" "$ROOT/../../../stage-a/libStageAExtra.a" "$ROOT/../../../stage-a/libVerifiedRootProbe.a"; do',
+              '    if [ -f "$stub" ]; then',
+              '      KERNEL_EXTRA_ARCHIVES="$KERNEL_EXTRA_ARCHIVES -Wl,-force_load,$stub"',
+              '      echo "stage-a stub linked: $stub"',
+              '    fi',
+              '  done',
+              make_args,
+          ])
+          body = body.replace(make_args, stage_a)
           script.write_text(body)
           print("display mode %s: kept the display archive" % ("real" if real else "stub"),
                 "and pointed UFS at the built archive")
