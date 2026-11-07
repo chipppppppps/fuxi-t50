@@ -375,6 +375,12 @@ jobs:
           assert body.count(ram_object_stale) == 1, "the script no longer holds the stale ram-block object path"
           body = body.replace(ram_object_stale,
                               "RAM_BLOCK_OBJECT=${XNU_NATIVE_RAM_BLOCK_OBJECT:-$ROOT/build/native-ram-block/NativeRamBlock.o}")
+          # The Adreno driver is out of the archive list, so skip its link block
+          # instead of failing the preflight on the missing archive.
+          adreno_stale = 'if [ "${XNU_NATIVE_ADRENO:-0}" = 1 ]; then'
+          assert body.count(adreno_stale) == 1, "the script no longer gates the Adreno archive"
+          body = body.replace(adreno_stale,
+                              'if [ "${XNU_NATIVE_ADRENO:-0}" = 1 ] && [ -f "$ROOT/build/adreno740/libAdreno740.a" ]; then')
           # The driver build only exports the CONFIG_ keys it knows about, so the
           # stub archives configured through CONFIG_XNU_EXTRA_LD_ARCHIVES never
           # reach the link line. Force-load whatever Stage A produced, in place.
