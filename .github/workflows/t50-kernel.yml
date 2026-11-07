@@ -381,6 +381,23 @@ jobs:
           assert body.count(adreno_stale) == 1, "the script no longer gates the Adreno archive"
           body = body.replace(adreno_stale,
                               'if [ "${XNU_NATIVE_ADRENO:-0}" = 1 ] && [ -f "$ROOT/build/adreno740/libAdreno740.a" ]; then')
+          # GpuPowerProbe is a GPU-only probe: without the Adreno kits built it
+          # leaves C++ references the link cannot resolve, so keep it out of the
+          # display archive.
+          gen = Path(os.environ["DEVICE"], "scripts/build-native-legacy-display.py")
+          source = gen.read_text()
+          assert "cpufreq_obj,gpupower_obj," in source, "the display archive no longer lists GpuPowerProbe"
+          source = source.replace("cpufreq_obj,gpupower_obj,", "cpufreq_obj,")
+          kept = []
+          skipped = 0
+          for line in source.splitlines():
+              if line.startswith("run([str(gpupower_cpp)"):
+                  skipped += 1
+                  kept.append("print('GpuPowerProbe stays out of the display archive: the Adreno kits are not built')")
+              else:
+                  kept.append(line)
+          assert skipped == 1, "the GpuPowerProbe compile line moved"
+          gen.write_text("\n".join(kept) + "\n")
           # The driver build only exports the CONFIG_ keys it knows about, so the
           # stub archives configured through CONFIG_XNU_EXTRA_LD_ARCHIVES never
           # reach the link line. Force-load whatever Stage A produced, in place.
