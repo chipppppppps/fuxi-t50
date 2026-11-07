@@ -316,6 +316,18 @@ jobs:
                       if not line.strip().startswith(dropped)]
               assert len(kept) < len(text.splitlines()), "none of the stubbed recipes was in the archives list"
               board.write_text("\n".join(kept) + "\n")
+          else:
+              # The GPU kits and the accelerator build against XNU interfaces this
+              # tree no longer declares (task_get_gpu_role, PRIO_DARWIN_GPU_*), so
+              # they stay out in both modes; only the display archive comes back.
+              board = Path(os.environ["DEVICE"], "board.toml")
+              text = board.read_text()
+              dropped = ('"build-adreno740-kits.py', '"build-adreno740-accelerator.py')
+              kept = [line for line in text.splitlines()
+                      if not line.strip().startswith(dropped)]
+              assert len(kept) < len(text.splitlines()), "the GPU kit recipes were not in the archives list"
+              board.write_text("\n".join(kept) + "\n")
+              print("dropped the GPU kit recipes so the tree's XNU headers stay consistent")
 
           cfg = Path(os.environ["DEVICE"], "configs/fuxi_full_defconfig")
           lines = cfg.read_text().splitlines()
