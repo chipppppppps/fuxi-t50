@@ -34,6 +34,47 @@ jobs:
           cd UniXNU
           du -sh ../UniXNU ../unixnu-fuxi ../uefi-fuxi
 
+      - name: Repair component revisions the upstream pins can no longer serve
+        working-directory: work/UniXNU
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, re, subprocess, tempfile
+
+          toml = pathlib.Path('components.toml')
+          text = toml.read_text()
+          blocks = re.split(r'(?=\n\[\[component\]\])', text)
+          changed = 0
+          for index, block in enumerate(blocks):
+              repo = re.search(r'^repository = "([^"]+)"', block, re.M)
+              rev = re.search(r'^revision = "([^"]+)"', block, re.M)
+              if not repo or not rev:
+                  continue
+              url, pinned = repo.group(1), rev.group(1)
+              with tempfile.TemporaryDirectory() as tmp:
+                  def fetch(spec):
+                      return subprocess.run(
+                          ['git', '-C', tmp, 'fetch', '--depth', '1', 'origin', spec],
+                          capture_output=True, text=True)
+                  subprocess.run(['git', 'init', '-q', tmp], check=True)
+                  subprocess.run(['git', '-C', tmp, 'remote', 'add', 'origin', url], check=True)
+                  if fetch(pinned).returncode == 0:
+                      continue
+                  if fetch('HEAD').returncode != 0:
+                      print(f'cannot fetch {url} at all, leaving the pin alone')
+                      continue
+                  head = subprocess.run(['git', '-C', tmp, 'rev-parse', 'FETCH_HEAD'],
+                                        capture_output=True, text=True, check=True).stdout.strip()
+              blocks[index] = block.replace(f'revision = "{pinned}"', f'revision = "{head}"')
+              changed += 1
+              print(f'{url}: {pinned} -> {head}')
+          if changed:
+              toml.write_text(''.join(blocks))
+              print(f'rewrote {changed} component revision(s)')
+          else:
+              print('every pinned revision is still fetchable')
+          PY
+
       - name: Select the configuration, repoint the rewritten submodule, fetch
         working-directory: work/UniXNU
         run: |
