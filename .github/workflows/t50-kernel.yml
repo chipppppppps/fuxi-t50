@@ -15,6 +15,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       UNIXNU_UNIQUE_CHIP_ID: "0xce854c9ae043320b"
       SEED_ARTIFACT: "13571916750"
+      CANDIDATE: native-owner-ufs-cpu-desktop-s0-candidate
     steps:
       - name: Check out the device repository
         uses: actions/checkout@v4
@@ -47,7 +48,6 @@ jobs:
       - name: Repoint submodule pins the upstream no longer serves
         shell: python3 {0}
         env:
-          DEVICE: ${{ github.workspace }}/fuxi
           SUPERS: ${{ github.workspace }}/unixnu
         run: |
           import os, re, subprocess
@@ -56,33 +56,18 @@ jobs:
           def git(*args, **kw):
               return subprocess.run(["git", *args], text=True, **kw)
 
-          device = Path(os.environ["DEVICE"])
           supers = Path(os.environ["SUPERS"])
-          modules = {}
-          for line in (supers / ".gitmodules").read_text().splitlines():
-              m = re.match(r"\s*path\s*=\s*(.+)", line)
-              if m:
-                  modules[m.group(1).strip()] = True
+          block = (supers / ".gitmodules").read_text()
+          modules = re.findall(r'\[submodule "[^"]+"\]\s*\n\s*path = (\S+)\s*\n\s*url = (\S+)', block)
           repointed = []
-          for path in modules:
-              tree = git("ls-tree", "HEAD", "--", path, cwd=supers, capture_output=True)
-              parts = tree.stdout.split()
+          for path, url in modules:
+              parts = git("ls-tree", "HEAD", "--", path, cwd=supers, capture_output=True).stdout.split()
               if len(parts) < 3:
                   continue
               old = parts[2]
-              url = None
-              block = (supers / ".gitmodules").read_text()
-              m = re.search(r"\[submodule \"[^\"]+\"\]\s*\n\s*path = " + re.escape(path) +
-                            r"\s*\n\s*url = (\S+)", block)
-              if m:
-                  url = m.group(1)
-              if not url:
+              if git("fetch", "--depth", "1", url, old, cwd=supers, capture_output=True).returncode == 0:
                   continue
-              probe = git("fetch", "--depth", "1", url, old, cwd=supers, capture_output=True)
-              if probe.returncode == 0:
-                  continue
-              head = git("fetch", "--depth", "1", url, "HEAD", cwd=supers, capture_output=True)
-              if head.returncode != 0:
+              if git("fetch", "--depth", "1", url, "HEAD", cwd=supers, capture_output=True).returncode != 0:
                   raise SystemExit(f"cannot fetch {url}")
               new = git("rev-parse", "FETCH_HEAD", cwd=supers, capture_output=True).stdout.strip()
               git("update-index", "--add", "--cacheinfo", f"160000,{new},{path}", cwd=supers)
@@ -107,22 +92,24 @@ jobs:
             -o /tmp/seed.zip
           unzip -q -o /tmp/seed.zip -d /tmp/seed
           ls -l /tmp/seed/kernel
-          mkdir -p fuxi/build/xnu-prelink fuxi/build/native-prelink
-          for d in xnu-prelink native-prelink; do
-            cp /tmp/seed/kernel/kernel.macho "fuxi/build/$d/native-owner-ufs-cpu-desktop-s0-candidate.macho"
-            cp /tmp/seed/kernel/kernel.json "fuxi/build/$d/native-owner-ufs-cpu-desktop-s0-candidate.json"
+          for d in "$GITHUB_WORKSPACE/fuxi/build" ; do
+            mkdir -p "$d/xnu-prelink" "$d/native-prelink"
+            for sub in xnu-prelink native-prelink; do
+              cp "/tmp/seed/kernel/kernel.macho" "$d/$sub/$CANDIDATE.macho"
+              cp "/tmp/seed/kernel/kernel.json" "$d/$sub/$CANDIDATE.json"
+            done
           done
           python3 - <<'PY'
-          import json, hashlib
+          import hashlib, json, os
           from pathlib import Path
-          blob = Path("fuxi/build/xnu-prelink/native-owner-ufs-cpu-desktop-s0-candidate.macho").read_bytes()
-          plan = json.loads(Path("fuxi/build/xnu-prelink/native-owner-ufs-cpu-desktop-s0-candidate.json").read_text())
+          stem = os.environ["CANDIDATE"]
+          blob = Path("fuxi/build/xnu-prelink", stem + ".macho").read_bytes()
+          plan = json.loads(Path("fuxi/build/xnu-prelink", stem + ".json").read_text())
           assert hashlib.sha256(blob).hexdigest() == plan["candidate_sha256"]
           family = plan["original_executable_sha256"]["com.apple.iokit.IOMobileGraphicsFamily"]
           assert family == "2e044ee68c1650397e1435234ca6459206262e4c7ed709cb7131c6f664f9bd9b", family
-          print("PASS: generation-0 candidate identity", plan["candidate_sha256"][:16], "family", family[:16])
+          print("PASS: generation-0 candidate", plan["candidate_sha256"][:16], "family", family[:16])
           PY
-          python3 -c "import sys; sys.path.insert(0,'fuxi/scripts'); import fuxi_legacy_metadata; print('metadata module imports')"
 
       - name: Configure
         working-directory: unixnu
@@ -131,33 +118,44 @@ jobs:
           ./unixnu defconfig fuxi_full_defconfig --device "$GITHUB_WORKSPACE/fuxi"
           ./unixnu fetch
 
-      - name: Build the kernel (first pass, expected to stop in the archive chain)
+      - name: Seed the tree with the candidate
+        run: |
+          set -euo pipefail
+          TREE="$GITHUB_WORKSPACE/unixnu/out/fuxi/tree"
+          for sub in xnu-prelink native-prelink; do
+            mkdir -p "$TREE/build/$sub"
+            cp "$GITHUB_WORKSPACE/fuxi/build/$sub/$CANDIDATE.macho" "$TREE/build/$sub/"
+            cp "$GITHUB_WORKSPACE/fuxi/build/$sub/$CANDIDATE.json" "$TREE/build/$sub/"
+          done
+          find "$TREE/build" -maxdepth 2 -name '*candidate*' -exec ls -l {} \;
+
+      - name: Build the kernel
+        id: build
         working-directory: unixnu
         continue-on-error: true
         run: ./unixnu build kernel
 
-      - name: Stage the candidate into the tree and rebuild
+      - name: Reseed the tree and rebuild once
+        if: steps.build.outcome == 'failure'
         working-directory: unixnu
         run: |
           set -euo pipefail
-          TREE=out/fuxi/ipados-17.7.11-21H461/fuxi/tree
-          ls -d out/fuxi/*/fuxi/tree 2>/dev/null || true
-          TREE=$(ls -d out/fuxi/*/fuxi/tree | head -n 1)
-          for d in xnu-prelink native-prelink; do
-            mkdir -p "$TREE/build/$d"
-            cp "$GITHUB_WORKSPACE/fuxi/build/$d/native-owner-ufs-cpu-desktop-s0-candidate.macho" "$TREE/build/$d/"
-            cp "$GITHUB_WORKSPACE/fuxi/build/$d/native-owner-ufs-cpu-desktop-s0-candidate.json" "$TREE/build/$d/"
+          TREE="$GITHUB_WORKSPACE/unixnu/out/fuxi/tree"
+          for sub in xnu-prelink native-prelink; do
+            mkdir -p "$TREE/build/$sub"
+            cp "$GITHUB_WORKSPACE/fuxi/build/$sub/$CANDIDATE.macho" "$TREE/build/$sub/"
+            cp "$GITHUB_WORKSPACE/fuxi/build/$sub/$CANDIDATE.json" "$TREE/build/$sub/"
           done
-          ls -l "$TREE/build/xnu-prelink"
           ./unixnu build kernel
 
       - name: Report the kernel
         if: always()
         working-directory: unixnu
         run: |
-          OUT=$(ls -d out/fuxi/*/fuxi | head -n 1)
-          echo "output: $OUT"
-          ls -l "$OUT/kernel" 2>/dev/null || true
+          set -euo pipefail
+          OUT="$GITHUB_WORKSPACE/unixnu/out/fuxi"
+          ls -l "$OUT" || true
+          ls -l "$OUT/kernel" || true
           python3 - "$OUT" <<'PY'
           import json, sys
           from pathlib import Path
@@ -170,6 +168,7 @@ jobs:
           print("candidate_bytes", d.get("candidate_bytes"))
           print("abi_qualified", d.get("abi_qualified"), "loadable", d.get("loadable"))
           print("components", len(d.get("components", [])))
+          print("runtime_qualified", d.get("runtime_qualified"))
           PY
 
       - name: Collect logs and outputs
@@ -177,11 +176,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p collect
-          OUT=$(ls -d unixnu/out/fuxi/*/fuxi | head -n 1)
-          cp -R "$OUT/logs" collect/logs || true
-          cp -R "$OUT/kernel" collect/kernel || true
-          TREE=$(ls -d unixnu/out/fuxi/*/fuxi/tree 2>/dev/null | head -n 1 || true)
-          [ -n "$TREE" ] && cp -R "$TREE/build/display-analysis" collect/display-analysis 2>/dev/null || true
+          OUT="$GITHUB_WORKSPACE/unixnu/out/fuxi"
+          cp -R "$OUT/logs" collect/logs 2>/dev/null || true
+          cp -R "$OUT/kernel" collect/kernel 2>/dev/null || true
+          cp -R "$OUT/tree/build/display-analysis" collect/display-analysis 2>/dev/null || true
+          cp -R "$OUT/tree/build/native-legacy-display" collect/native-legacy-display 2>/dev/null || true
           du -sh collect/* 2>/dev/null || true
 
       - name: Upload
