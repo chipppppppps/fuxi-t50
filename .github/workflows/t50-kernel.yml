@@ -132,6 +132,11 @@ jobs:
           print("PASS: generation-0 candidate", plan["candidate_sha256"][:16], "family", family[:16])
           PY
 
+      - name: Put llvm-objcopy on PATH
+        run: |
+          brew list llvm >/dev/null 2>&1 || brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+
       - name: Configure
         working-directory: unixnu
         run: |
