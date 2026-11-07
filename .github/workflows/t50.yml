@@ -1,4 +1,4 @@
-﻿name: fuxi t50 (macOS)
+name: fuxi t50 (macOS)
 
 # Build the public ljhhkx529 fuxi line (NativeUfs + NativeAdreno + NativeLegacyDisplay).
 # Derived from yigezhong011-ops/ios-fuxi .github/workflows/unixnu-macos.yml.
@@ -78,7 +78,24 @@ jobs:
         working-directory: work/UniXNU
         run: |
           set -euo pipefail
+          # No Data seed exists yet, so the persistent Data mount cannot be satisfied. Turn it off for
+          # this RAM-only probe: the point is to see how far the kernel and the display get without it.
+          python3 - <<'PY'
+          import pathlib
+          path = pathlib.Path('../unixnu-fuxi/configs/fuxi_full_defconfig')
+          lines = path.read_text().splitlines()
+          out = []
+          for line in lines:
+              if line.strip() == 'CONFIG_XNU_OWNER_DATA_MOUNT=y':
+                  out.append('# RAM-only probe: no Data seed, so the persistent Data mount is off')
+                  out.append('# ' + line)
+              else:
+                  out.append(line)
+          path.write_text('\n'.join(out) + '\n')
+          print('\n'.join(l for l in out if 'OWNER_DATA_MOUNT' in l))
+          PY
           ./unixnu defconfig fuxi_full_defconfig -D ../unixnu-fuxi --uefi ../uefi-fuxi
+          grep -n 'OWNER_DATA_MOUNT' out/fuxi/.config || true
           D=../unixnu-fuxi/drivers/QcomXnuUsbDebug
           if [ ! -f "$D/Makefile" ] && [ ! -e "$D/.git" ]; then
             rm -rf "$D"
