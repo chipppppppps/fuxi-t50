@@ -92,8 +92,7 @@ jobs:
           # No storage, graphics or ordered archives on stage A: the link only has to produce a Mach-O the prelink
           # step accepts, and every archive recipe needs a prelink candidate that cannot exist yet.
           drop = ('CONFIG_XNU_NATIVE_', 'CONFIG_XNU_VERIFIED_', 'CONFIG_XNU_OWNER_', 'CONFIG_XNU_SHENG_',
-                  'CONFIG_XNU_BUILD_ARCHIVES', 'CONFIG_XNU_EXTRA_LD_ARCHIVES',
-                  'CONFIG_XNU_BOOT_PROGRESS')
+                  'CONFIG_XNU_EXTRA_LD_ARCHIVES', 'CONFIG_XNU_BOOT_PROGRESS')
           lines = []
           for line in source.splitlines():
               if line.startswith(drop) or (line.startswith('CONFIG_XNU_') and '_ARCHIVE' in line):
@@ -103,8 +102,12 @@ jobs:
           (device / 'configs/fuxi_stage_a_defconfig').write_text('\n'.join(lines) + '\n')
 
           board = (device / 'board.toml').read_text()
-          # The archives list is the single reason a clean tree cannot link.
-          board = re.sub(r'(?ms)^archives = \[.*?^\]\n', 'archives = []\n', board, count=1)
+          # Keep only the archive recipes that need no prelink candidate: corecrypto, the two bundled drivers and
+          # libpthread. Every other recipe reads build/native-prelink, which a clean tree cannot have.
+          keep = ['build-corecrypto-14.py', 'build-corecrypto-14.py --namespace', 'build-arm-driver.py ArmDTPlatform',
+                  'build-arm-driver.py ArmCpu', 'build-libpthread-kernel.py']
+          listing = 'archives = [\n' + ''.join(f'  "{name}",\n' for name in keep) + ']\n'
+          board = re.sub(r'(?ms)^archives = \[.*?^\]\n', listing, board, count=1)
           (device / 'board.toml').write_text(board)
           print('archives line:', [l for l in board.splitlines() if l.startswith('archives')])
           print('extra ld archives:', [l for l in (device / 'configs/fuxi_stage_a_defconfig').read_text().splitlines()
