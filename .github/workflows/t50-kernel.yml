@@ -331,7 +331,7 @@ jobs:
 
           cfg = Path(os.environ["DEVICE"], "configs/fuxi_full_defconfig")
           lines = cfg.read_text().splitlines()
-          extra_libs = ["libStageAExtra.a", "libVerifiedRootProbe.a"]
+          extra_libs = ["libStageAExtra.a"]
           link_list = Path(os.environ["DEVICE"]).parent / "unixnu" / "stage-a" / "link.txt"
           link_list.parent.mkdir(parents=True, exist_ok=True)
           link_list.write_text("\n".join(extra_libs) + "\n")
