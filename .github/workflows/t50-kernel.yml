@@ -260,8 +260,15 @@ jobs:
               "static constexpr unsigned kRequestRect0=17,kRequestRect1=81,kRequestMasks=792,kRequestOptions=804,kRequestDims=816,kRequestSurfaces=2624;",
               "#define NATIVE_LEGACY_LEAVES(LEAF) LEAF(211) LEAF(245) LEAF(246) LEAF(306) LEAF(307) LEAF(338) LEAF(345)",
           ])
-          path.write_text(body.replace(anchor, block, 1))
-          print("taught the generator the state request, the request offsets and the guarded leaves")
+          body = body.replace(anchor, block, 1)
+
+          slot = "    elif i==301:header+=' virtual bool getRefreshAttributes(uint64_t *,bool);\\n'"
+          assert body.count(slot) == 1, "the generator no longer declares the refresh attributes slot"
+          state = ("    elif i==354:header+=' virtual int applyStateRequest(OriginalLegacyStateRequest *,bool);\\n'")
+          body = body.replace(slot, slot + "\n" + state, 1)
+
+          path.write_text(body)
+          print("taught the generator the state request, the request offsets, the guarded leaves and slot 354")
 
       - name: Drop the display archive and link the stub instead
         shell: python3 {0}
