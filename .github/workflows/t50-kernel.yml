@@ -236,7 +236,16 @@ jobs:
           ASM
           xcrun clang -target arm64-apple-ios17.0 -c "$GITHUB_WORKSPACE/unixnu/stage-a/verified.s" -o "$GITHUB_WORKSPACE/unixnu/stage-a/verified.o"
           xcrun ar rcs "$GITHUB_WORKSPACE/unixnu/stage-a/libVerifiedRootProbe.a" "$GITHUB_WORKSPACE/unixnu/stage-a/verified.o"
-          echo "stubbed the display and the verified-root archives"
+          cat > "$GITHUB_WORKSPACE/unixnu/stage-a/extra.s" <<'ASM'
+          .text
+          .globl _native_mobile_graphics_client_probe
+          _native_mobile_graphics_client_probe:
+            mov x0, #0
+            ret
+          ASM
+          xcrun clang -target arm64-apple-ios17.0 -c "$GITHUB_WORKSPACE/unixnu/stage-a/extra.s" -o "$GITHUB_WORKSPACE/unixnu/stage-a/extra.o"
+          xcrun ar rcs "$GITHUB_WORKSPACE/unixnu/stage-a/libStageAExtra.a" "$GITHUB_WORKSPACE/unixnu/stage-a/extra.o"
+          echo "stubbed the display, the verified-root and the graphics client archives"
 
       - name: Teach the legacy generator the leaf contract
         shell: python3 {0}
@@ -294,19 +303,21 @@ jobs:
 
           cfg = Path(os.environ["DEVICE"], "configs/fuxi_full_defconfig")
           lines = cfg.read_text().splitlines()
+          extra_libs = ["libStageAExtra.a"]
           if not real:
               off = "CONFIG_XNU_NATIVE_LEGACY_DISPLAY=y"
               assert off in lines, "the defconfig no longer turns the legacy display on"
               lines = [("# the stub keeps the display probe out of the kernel: " + off if line == off else line)
                        for line in lines]
-              extra = 'CONFIG_XNU_EXTRA_LD_ARCHIVES="'
-              for i, line in enumerate(lines):
-                  if line.startswith(extra):
-                      assert line.endswith('"'), f"unexpected archives line: {line}"
-                      lines[i] = line[:-1] + ' {tree}/../../../stage-a/libStageAStub.a"'
-                      break
-              else:
-                  raise SystemExit("no CONFIG_XNU_EXTRA_LD_ARCHIVES line")
+              extra_libs.insert(0, "libStageAStub.a")
+          extra = 'CONFIG_XNU_EXTRA_LD_ARCHIVES="'
+          for i, line in enumerate(lines):
+              if line.startswith(extra):
+                  assert line.endswith('"'), f"unexpected archives line: {line}"
+                  lines[i] = line[:-1] + "".join(f" {{tree}}/../../../stage-a/{lib}" for lib in extra_libs) + '"'
+                  break
+          else:
+              raise SystemExit("no CONFIG_XNU_EXTRA_LD_ARCHIVES line")
 
           verified = 'CONFIG_XNU_VERIFIED_ROOT_ARCHIVE="'
           for i, line in enumerate(lines):
@@ -379,13 +390,13 @@ jobs:
             added=0
             while read -r sym; do
               [ -z "$sym" ] && continue
-              if grep -q "^_$sym:" "$STUBDIR/stubs.s" 2>/dev/null; then continue; fi
-              printf '.globl _%s\n_%s:\n  mov x0, #0\n  ret\n' "$sym" "$sym" >> "$STUBDIR/stubs.s"
+              if grep -q "^_$sym:" "$STUBDIR/extra.s" 2>/dev/null; then continue; fi
+              printf '.globl _%s\n_%s:\n  mov x0, #0\n  ret\n' "$sym" "$sym" >> "$STUBDIR/extra.s"
               added=$((added+1))
             done < "$STUBDIR/missing.txt"
             echo "added $added stub(s) for: $(tr '\n' ' ' < "$STUBDIR/missing.txt")"
-            xcrun clang -target arm64-apple-ios17.0 -c "$STUBDIR/stubs.s" -o "$STUBDIR/stubs.o"
-            xcrun ar rcs "$STUBDIR/libStageAStub.a" "$STUBDIR/stubs.o"
+            xcrun clang -target arm64-apple-ios17.0 -c "$STUBDIR/extra.s" -o "$STUBDIR/extra.o"
+            xcrun ar rcs "$STUBDIR/libStageAExtra.a" "$STUBDIR/extra.o"
           done
           echo "still failing after 4 attempts"
           exit 1
