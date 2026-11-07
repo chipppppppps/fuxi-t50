@@ -180,10 +180,13 @@ jobs:
           print("PASS: generation-0 candidate", plan["candidate_sha256"][:16], "family", family[:16])
           PY
 
-      - name: Put llvm-objcopy on PATH
+      - name: Put llvm-objcopy and fdtget on PATH
         run: |
+          set -euo pipefail
           brew list llvm >/dev/null 2>&1 || brew install llvm
+          brew list dtc >/dev/null 2>&1 || brew install dtc
           echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          command -v fdtget || ls /opt/homebrew/bin/fdtget
 
       - name: Stub the display driver so the rest of the chain links
         run: |
@@ -293,6 +296,23 @@ jobs:
           print("components", len(d.get("components", [])))
           print("runtime_qualified", d.get("runtime_qualified"))
           PY
+
+      - name: List every Legacy ABI header the tree holds
+        if: always()
+        run: |
+          set -euo pipefail
+          TREE="$GITHUB_WORKSPACE/unixnu/out/fuxi/tree"
+          mkdir -p collect
+          if [ -d "$TREE" ]; then
+            find "$TREE" -name 'OriginalLegacyFramebufferABI.h' -print > collect/legacy-headers.txt || true
+            for f in $(cat collect/legacy-headers.txt); do
+              printf '%s %s %s\n' "$(wc -c < "$f" | tr -d ' ')" "$(grep -c 'class IOMobileFramebufferLegacy : public IOService' "$f" || true)" "$f" >> collect/legacy-headers.txt.detail
+            done
+            grep -rn 'include "OriginalLegacyFramebufferABI.h"' "$TREE/drivers" >> collect/legacy-headers.txt || true
+          fi
+          ls -l collect || true
+          cat collect/legacy-headers.txt 2>/dev/null || true
+          cat collect/legacy-headers.txt.detail 2>/dev/null || true
 
       - name: Collect logs and outputs
         if: always()
