@@ -85,7 +85,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Say ""
-Say "Done. The phone now boots the t50 display probe from slot b."
+Say "Rebooting into slot b..."
+& $fastboot -s $serial reboot
+Start-Sleep -Seconds 3
+
+Say ""
+Say "The phone is booting the t50 display probe from slot b."
 Say "Expected: the UniXNU menu appears for about 3 seconds, then the loader hands off."
 Say "Watch for: a green bar, then a blue bar, then either a framebuffer console with"
 Say "the XNU boot log or a panic screen with text. Photograph whatever it shows."
