@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-26
     timeout-minutes: 300
     steps:
       - name: Clone UniXNU, the device repository and the UEFI port
