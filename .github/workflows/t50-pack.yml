@@ -1,0 +1,171 @@
+name: fuxi t50 boot image
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_artifact:
+        description: "artifact id that holds the linked kernel (fuxi-t50-kernel-*)"
+        required: true
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  pack:
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      UNIXNU_UNIQUE_CHIP_ID: "0xce854c9ae043320b"
+      KERNEL_ARTIFACT: ${{ inputs.kernel_artifact }}
+    steps:
+      - name: Check out the device repository
+        uses: actions/checkout@v4
+        with:
+          repository: ljhhkx529/unixnu-fuxi
+          ref: old
+          path: fuxi
+
+      - name: Check out UniXNU
+        uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU
+          ref: main
+          path: unixnu
+
+      - name: Check out the UEFI firmware
+        uses: actions/checkout@v4
+        with:
+          repository: ljhhkx529/uefi-fuxi
+          ref: old
+          path: uefi-fuxi
+
+      - name: Select Xcode
+        run: |
+          for app in /Applications/Xcode_26*.app; do
+            [ -d "$app" ] && sudo xcode-select -s "$app" && break
+          done
+          xcodebuild -version
+
+      - name: Repoint submodule pins the upstream no longer serves
+        shell: python3 {0}
+        env:
+          SUPERS: ${{ github.workspace }}/unixnu
+        run: |
+          import os, re, subprocess
+          from pathlib import Path
+
+          def git(*args, **kw):
+              return subprocess.run(["git", *args], text=True, **kw)
+
+          supers = Path(os.environ["SUPERS"])
+          block = (supers / ".gitmodules").read_text()
+          modules = re.findall(r'\[submodule "[^"]+"\]\s*\n\s*path = (\S+)\s*\n\s*url = (\S+)', block)
+          repointed = []
+          for path, url in modules:
+              parts = git("ls-tree", "HEAD", "--", path, cwd=supers, capture_output=True).stdout.split()
+              if len(parts) < 3:
+                  continue
+              old = parts[2]
+              if git("fetch", "--depth", "1", url, old, cwd=supers, capture_output=True).returncode == 0:
+                  continue
+              if git("fetch", "--depth", "1", url, "HEAD", cwd=supers, capture_output=True).returncode != 0:
+                  raise SystemExit(f"cannot fetch {url}")
+              new = git("rev-parse", "FETCH_HEAD", cwd=supers, capture_output=True).stdout.strip()
+              git("update-index", "--add", "--cacheinfo", f"160000,{new},{path}", cwd=supers)
+              repointed.append(f"{path}: {old[:12]} -> {new[:12]}")
+          print("\n".join(repointed) or "no pin change needed")
+          print(f"repointed {len(repointed)} of {len(modules)}")
+
+      - name: Make the persistent Data volume optional for a display probe
+        shell: python3 {0}
+        env:
+          DEVICE: ${{ github.workspace }}/fuxi
+        run: |
+          import os
+          from pathlib import Path
+
+          cfg = Path(os.environ["DEVICE"], "configs/fuxi_full_defconfig")
+          lines = cfg.read_text().splitlines()
+          target = "CONFIG_XNU_OWNER_DATA_MOUNT=y"
+          assert target in lines, "the defconfig no longer turns the Data mount on"
+          cfg.write_text("\n".join(("# the payload has no Data seed yet: " + target if line == target else line)
+                                   for line in lines) + "\n")
+          print("commented out", target)
+
+      - name: Install the tools the boot image needs
+        run: |
+          set -euo pipefail
+          brew list dtc >/dev/null 2>&1 || brew install dtc
+          brew list mtools >/dev/null 2>&1 || brew install mtools
+          command -v fdtget || ls /opt/homebrew/bin/fdtget
+
+      - name: Configure
+        working-directory: unixnu
+        run: |
+          set -euo pipefail
+          ./unixnu defconfig fuxi_full_defconfig --device "$GITHUB_WORKSPACE/fuxi"
+          ./unixnu fetch
+
+      - name: Restore the linked kernel from the artifact
+        run: |
+          set -euo pipefail
+          gh api "repos/${{ github.repository }}/actions/artifacts/$KERNEL_ARTIFACT/zip" > /tmp/kernel.zip
+          unzip -q /tmp/kernel.zip -d /tmp/kernel-artifact
+          ls -l /tmp/kernel-artifact
+          mkdir -p unixnu/out/fuxi/kernel
+          cp /tmp/kernel-artifact/kernel/kernel.macho unixnu/out/fuxi/kernel/kernel.macho
+          cp /tmp/kernel-artifact/kernel/kernel.json unixnu/out/fuxi/kernel/kernel.json
+          ls -l unixnu/out/fuxi/kernel
+
+      - name: Build the payload
+        working-directory: unixnu
+        run: |
+          set -euo pipefail
+          ./unixnu build payload --uefi ../uefi-fuxi --unique-chip-id "$UNIXNU_UNIQUE_CHIP_ID"
+          find out/fuxi/payload -maxdepth 1 -type f -exec ls -l {} \;
+          cat out/fuxi/payload/payload.json
+
+      - name: Build the firmware
+        working-directory: unixnu
+        run: |
+          set -euo pipefail
+          ./unixnu build firmware --uefi ../uefi-fuxi --target DEBUG
+          ls -l ../uefi-fuxi/Build/fuxiPkg/DEBUG_CLANGPDB/FV/ || true
+
+      - name: Pack the boot image
+        working-directory: unixnu
+        run: |
+          set -euo pipefail
+          python3 ../uefi-fuxi/scripts/bootimage.py \
+            --unixnu-root . \
+            --device ../fuxi \
+            --uefi ../uefi-fuxi \
+            --ramdisk out/fuxi/payload/payload.img \
+            -o out/fuxi/boot/boot.img
+          ls -l out/fuxi/boot
+          cat out/fuxi/boot/bootimage.json || true
+          shasum -a 256 out/fuxi/boot/boot.img
+
+      - name: Collect the image and the logs
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p collect
+          cp unixnu/out/fuxi/boot/boot.img collect/ 2>/dev/null || true
+          cp unixnu/out/fuxi/boot/bootimage.json collect/ 2>/dev/null || true
+          cp unixnu/out/fuxi/payload/payload.img collect/ 2>/dev/null || true
+          cp unixnu/out/fuxi/payload/payload.json collect/ 2>/dev/null || true
+          cp -R unixnu/out/fuxi/logs collect/logs 2>/dev/null || true
+          (cd collect && shasum -a 256 boot.img payload.img 2>/dev/null || true)
+          du -sh collect/* 2>/dev/null || true
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuxi-t50-boot-${{ github.run_attempt }}
+          path: collect
+          if-no-files-found: warn
