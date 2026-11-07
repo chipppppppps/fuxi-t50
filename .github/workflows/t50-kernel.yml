@@ -16,6 +16,7 @@ jobs:
       UNIXNU_UNIQUE_CHIP_ID: "0xce854c9ae043320b"
       SEED_ARTIFACT: "13571916750"
       CANDIDATE: native-owner-ufs-cpu-desktop-s0-candidate
+      CCC_OVERRIDE_OPTIONS: "+-Wno-unknown-warning-option"
     steps:
       - name: Check out the device repository
         uses: actions/checkout@v4
