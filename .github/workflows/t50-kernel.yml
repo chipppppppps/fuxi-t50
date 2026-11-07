@@ -383,6 +383,7 @@ jobs:
               '  for stub in "$ROOT/../../../stage-a/libStageAStub.a" "$ROOT/../../../stage-a/libStageAExtra.a" "$ROOT/../../../stage-a/libVerifiedRootProbe.a"; do',
               '    if [ -f "$stub" ]; then',
               '      KERNEL_EXTRA_ARCHIVES="$KERNEL_EXTRA_ARCHIVES -Wl,-force_load,$stub"',
+              '      KERNEL_ARCHIVE_DEPENDENCIES="$KERNEL_ARCHIVE_DEPENDENCIES $stub"',
               '      echo "stage-a stub linked: $stub"',
               '    fi',
               '  done',
