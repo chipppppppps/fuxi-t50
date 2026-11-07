@@ -362,7 +362,15 @@ jobs:
           body = script.read_text()
           stale = "UFS_ARCHIVE=$ROOT/build/sheng-ufs/libShengUfs.a"
           assert body.count(stale) == 1, "the script no longer holds the stale sheng-ufs path"
-          script.write_text(body.replace(stale, "UFS_ARCHIVE=$ROOT/build/native-ufs/libNativeUfs.a"))
+          body = body.replace(stale, "UFS_ARCHIVE=$ROOT/build/native-ufs/libNativeUfs.a")
+          # The ram transport recipe writes build/native-ram-block, while the script
+          # still reads the historical build/ram-block name, and only that read has
+          # no environment override, so point it at what the recipe actually built.
+          ram_stale = "RAM_BLOCK_ARCHIVE=$ROOT/build/ram-block/libRamBlock.a"
+          assert body.count(ram_stale) == 1, "the script no longer holds the stale ram-block path"
+          body = body.replace(ram_stale,
+                              "RAM_BLOCK_ARCHIVE=${XNU_NATIVE_RAM_BLOCK_ARCHIVE:-$ROOT/build/native-ram-block/libNativeRamBlock.a}")
+          script.write_text(body)
           print("display mode %s: kept the display archive" % ("real" if real else "stub"),
                 "and pointed UFS at the built archive")
 
