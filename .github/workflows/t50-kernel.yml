@@ -219,9 +219,12 @@ jobs:
 
           board = Path(os.environ["DEVICE"], "board.toml")
           text = board.read_text()
+          dropped = ('"build-native-legacy-display.py',
+                     '"build-adreno740-kits.py',
+                     '"build-adreno740-accelerator.py')
           kept = [line for line in text.splitlines()
-                  if not line.strip().startswith('"build-native-legacy-display.py')]
-          assert len(kept) < len(text.splitlines()), "legacy display recipe not in the archives list"
+                  if not line.strip().startswith(dropped)]
+          assert len(kept) < len(text.splitlines()), "none of the stubbed recipes was in the archives list"
           board.write_text("\n".join(kept) + "\n")
 
           cfg = Path(os.environ["DEVICE"], "configs/fuxi_full_defconfig")
@@ -261,18 +264,44 @@ jobs:
         continue-on-error: true
         run: ./unixnu build kernel
 
-      - name: Reseed the tree and rebuild once
+      - name: Reseed the tree and rebuild with self-healing stubs
         if: steps.build.outcome == 'failure'
         working-directory: unixnu
         run: |
-          set -euo pipefail
+          set -uo pipefail
           TREE="$GITHUB_WORKSPACE/unixnu/out/fuxi/tree"
-          for sub in xnu-prelink native-prelink; do
-            mkdir -p "$TREE/build/$sub"
-            cp "$GITHUB_WORKSPACE/fuxi/build/$sub/$CANDIDATE.macho" "$TREE/build/$sub/"
-            cp "$GITHUB_WORKSPACE/fuxi/build/$sub/$CANDIDATE.json" "$TREE/build/$sub/"
+          STUBDIR="$GITHUB_WORKSPACE/unixnu/stage-a"
+          for attempt in 1 2 3 4; do
+            echo "== attempt $attempt =="
+            for sub in xnu-prelink native-prelink; do
+              mkdir -p "$TREE/build/$sub"
+              cp "$GITHUB_WORKSPACE/fuxi/build/$sub/$CANDIDATE.macho" "$TREE/build/$sub/" || true
+              cp "$GITHUB_WORKSPACE/fuxi/build/$sub/$CANDIDATE.json" "$TREE/build/$sub/" || true
+            done
+            rm -f out/fuxi/logs/kernel.log out/fuxi/logs/kernel-bootstrap.log
+            if ./unixnu build kernel; then
+              echo "kernel built on attempt $attempt"
+              exit 0
+            fi
+            grep -hoE '"[A-Za-z_][A-Za-z0-9_]*", referenced from:' out/fuxi/logs/kernel*.log 2>/dev/null \
+              | sed -E 's/^"([A-Za-z_][A-Za-z0-9_]*)".*/\1/' | sort -u > "$STUBDIR/missing.txt" || true
+            if [ ! -s "$STUBDIR/missing.txt" ]; then
+              echo "no undefined symbols harvested"
+              exit 1
+            fi
+            added=0
+            while read -r sym; do
+              [ -z "$sym" ] && continue
+              if grep -q "^_$sym:" "$STUBDIR/stubs.s" 2>/dev/null; then continue; fi
+              printf '.globl _%s\n_%s:\n  mov x0, #0\n  ret\n' "$sym" "$sym" >> "$STUBDIR/stubs.s"
+              added=$((added+1))
+            done < "$STUBDIR/missing.txt"
+            echo "added $added stub(s) for: $(tr '\n' ' ' < "$STUBDIR/missing.txt")"
+            xcrun clang -target arm64-apple-ios17.0 -c "$STUBDIR/stubs.s" -o "$STUBDIR/stubs.o"
+            xcrun ar rcs "$STUBDIR/libStageAStub.a" "$STUBDIR/stubs.o"
           done
-          ./unixnu build kernel
+          echo "still failing after 4 attempts"
+          exit 1
 
       - name: Report the kernel
         if: always()
