@@ -288,6 +288,10 @@ jobs:
           cfg = Path(os.environ["DEVICE"], "configs/fuxi_full_defconfig")
           lines = cfg.read_text().splitlines()
           if not real:
+              off = "CONFIG_XNU_NATIVE_LEGACY_DISPLAY=y"
+              assert off in lines, "the defconfig no longer turns the legacy display on"
+              lines = [("# the stub keeps the display probe out of the kernel: " + off if line == off else line)
+                       for line in lines]
               extra = 'CONFIG_XNU_EXTRA_LD_ARCHIVES="'
               for i, line in enumerate(lines):
                   if line.startswith(extra):
