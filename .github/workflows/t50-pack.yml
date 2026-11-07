@@ -139,11 +139,84 @@ jobs:
           cp /tmp/kernel-artifact/kernel/kernel.json unixnu/out/fuxi/kernel/kernel.json
           ls -l unixnu/out/fuxi/kernel
 
+      - name: Bring the original Apple trust bundle
+        working-directory: unixnu
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          ./unixnu ipsw fetch StaticTrustCache Cryptex1,SystemTrustCache --device "$GITHUB_WORKSPACE/fuxi"
+          python3 - <<'PY'
+          import glob, hashlib, json, struct
+          from pathlib import Path
+
+
+          def seq_body(data):
+              assert data[0] == 0x30, "the trust cache is not a DER sequence"
+              at, size = 1, data[1]
+              if size & 0x80:
+                  count = size & 0x7F
+                  size = int.from_bytes(data[2:2 + count], "big")
+                  at = 2 + count
+              assert at + size == len(data), "the DER length does not span the file"
+              return data[at:at + size]
+
+
+          def items(body):
+              at, out = 0, []
+              while at < len(body):
+                  tag = body[at]
+                  at += 1
+                  size = body[at]
+                  at += 1
+                  if size & 0x80:
+                      count = size & 0x7F
+                      size = int.from_bytes(body[at:at + count], "big")
+                      at += count
+                  out.append((tag, body[at:at + size]))
+                  at += size
+              return out
+
+
+          def module(path):
+              top = items(seq_body(Path(path).read_bytes()))
+              assert top[0][1] == b"IM4P", f"{path} is not an IM4P"
+              octets = [value for tag, value in top if tag == 0x04]
+              assert len(octets) == 1, f"{path} does not carry one octet string"
+              data = octets[0]
+              assert struct.unpack_from("<I", data, 0)[0] == 2, f"{path} is not a version 2 module"
+              entries = struct.unpack_from("<I", data, 20)[0]
+              assert len(data) == 24 + entries * 24, f"{path} holds {len(data)} bytes for {entries} entries"
+              return data
+
+
+          picked = {}
+          for sidecar in glob.glob("out/ipsw/*/*.json"):
+              record = json.loads(Path(sidecar).read_text())
+              component = record.get("component")
+              target = Path(sidecar).with_suffix("")
+              if component in ("StaticTrustCache", "Cryptex1,SystemTrustCache") and target.is_file():
+                  picked[component] = target
+          assert set(picked) == {"StaticTrustCache", "Cryptex1,SystemTrustCache"}, picked
+          static = module(picked["StaticTrustCache"])
+          system = module(picked["Cryptex1,SystemTrustCache"])
+          bundle = struct.pack("<3I", 2, 12, 12 + len(static)) + static + system
+          digest = hashlib.sha256(bundle).hexdigest()
+          assert digest == "7416ca4f8377146626bb284e2133c76bee6cb4e3ee0af5d648b186235a7323a7", digest
+          Path("out/fuxi/trust.bundle").parent.mkdir(parents=True, exist_ok=True)
+          Path("out/fuxi/trust.bundle").write_bytes(bundle)
+          print("static", len(static), "system", len(system), "bundle", len(bundle), digest)
+          PY
+
       - name: Build the payload
         working-directory: unixnu
         run: |
           set -euo pipefail
-          ./unixnu build payload --uefi ../uefi-fuxi --unique-chip-id "$UNIXNU_UNIQUE_CHIP_ID"
+          trust=""
+          if [ -f out/fuxi/trust.bundle ]; then
+            trust="--trust-cache out/fuxi/trust.bundle"
+            shasum -a 256 out/fuxi/trust.bundle
+          fi
+          ./unixnu build payload --uefi ../uefi-fuxi --unique-chip-id "$UNIXNU_UNIQUE_CHIP_ID" $trust
           find out/fuxi/payload -maxdepth 1 -type f -exec ls -l {} \;
           cat out/fuxi/payload/payload.json
 
