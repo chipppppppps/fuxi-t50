@@ -269,7 +269,13 @@ jobs:
               raise SystemExit("no CONFIG_XNU_VERIFIED_ROOT_ARCHIVE line")
 
           cfg.write_text("\n".join(lines) + "\n")
-          print("dropped the display archive and appended the stubs to the link lines")
+
+          script = Path(os.environ["DEVICE"], "scripts/build-xnu-4k-baseline.sh")
+          body = script.read_text()
+          stale = "UFS_ARCHIVE=$ROOT/build/sheng-ufs/libShengUfs.a"
+          assert body.count(stale) == 1, "the script no longer holds the stale sheng-ufs path"
+          script.write_text(body.replace(stale, "UFS_ARCHIVE=$ROOT/build/native-ufs/libNativeUfs.a"))
+          print("dropped the display archive, appended the stubs and pointed UFS at the built archive")
 
       - name: Configure
         working-directory: unixnu
@@ -310,11 +316,11 @@ jobs:
               cp "$GITHUB_WORKSPACE/fuxi/build/$sub/$CANDIDATE.json" "$TREE/build/$sub/" || true
             done
             rm -f out/fuxi/logs/kernel.log out/fuxi/logs/kernel-bootstrap.log
-            if ./unixnu build kernel; then
+            if ./unixnu build kernel 2>&1 | tee "$STUBDIR/kernel-attempt.log"; then
               echo "kernel built on attempt $attempt"
               exit 0
             fi
-            grep -hoE '"[A-Za-z_][A-Za-z0-9_]*", referenced from:' out/fuxi/logs/kernel*.log 2>/dev/null \
+            grep -hoE '"[A-Za-z_][A-Za-z0-9_]*", referenced from:' "$STUBDIR/kernel-attempt.log" out/fuxi/logs/kernel*.log 2>/dev/null \
               | sed -E 's/^"([A-Za-z_][A-Za-z0-9_]*)".*/\1/' | sort -u > "$STUBDIR/missing.txt" || true
             if [ ! -s "$STUBDIR/missing.txt" ]; then
               echo "no undefined symbols harvested"
