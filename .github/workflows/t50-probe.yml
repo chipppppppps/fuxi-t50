@@ -3,8 +3,7 @@ name: fuxi t50 candidate probe (macOS)
 # Which file can serve as the prelink reference candidate the ordered archive
 # recipes read from build/native-prelink/? The device repository's own build
 # products are pruned, so a clean tree has nothing to point at. This probe only
-# asks a question, it builds nothing: does the original kernelcache (or a stage A
-# candidate) carry the Apple classes the recipes rewrite?
+# asks a question, it builds nothing.
 on:
   workflow_dispatch:
 
@@ -29,45 +28,28 @@ jobs:
         working-directory: work/UniXNU
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet tomli || true
           ./unixnu ipsw fetch KernelCache --device ../unixnu-fuxi
           find out/ipsw -type f | sort | while read -r f; do printf '%s\t%s\n' "$(stat -f%z "$f")" "$f"; done
 
-      - name: Ask which file carries the classes
+      - name: Scan the decompressed kernelcache
         working-directory: work/UniXNU
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import pathlib, struct, sys
-          sys.path.insert(0, 'kits/NativePrelink')
-          from native_prelink import macho, exports
+          import pathlib, struct
 
           wanted = ('25IOMobileFramebufferLegacy', '9ApplePMGR', '18ShengPlatformPower',
-                    '19NativeLegacyDisplay', '16AppleARMPlatform', '17IOGraphicsDevice')
+                    '19NativeLegacyDisplay', '16AppleARMPlatform', '17IOGraphicsDevice',
+                    '__PRELINK_INFO', 'AppleMobileFileIntegrity')
 
-          def look(path):
-              data = pathlib.Path(path).read_bytes()
-              text = data.decode('latin-1')
+          for path in sorted(pathlib.Path('out/ipsw').rglob('*')):
+              if not path.is_file():
+                  continue
+              data = path.read_bytes()
               print(f'== {path} ({len(data)} bytes)')
+              print(f'   magic {data[:4]!r} cputype {struct.unpack_from("<I", data, 4)[0]:#x} '
+                    f'ncmds {struct.unpack_from("<I", data, 16)[0]}')
+              text = data.decode('latin-1')
               for needle in wanted:
-                  print(f'   ascii {needle}: {text.count(needle)}')
-              try:
-                  meta = macho(data)
-              except Exception as error:
-                  print(f'   not a Mach-O the kit parses: {error!r}')
-                  return
-              try:
-                  names = exports(data, meta)
-              except Exception as error:
-                  print(f'   exports failed: {error!r}')
-                  return
-              flat = {n for group in names.values() for n in group}
-              print(f'   parsed, {len(flat)} exports')
-              for needle in wanted:
-                  hit = [n for n in flat if needle in n]
-                  print(f'   export {needle}: {len(hit)}')
-
-          for candidate in sorted(pathlib.Path('out/ipsw').rglob('*')):
-              if candidate.is_file():
-                  look(candidate)
+                  print(f'   {needle}: {text.count(needle)}')
           PY
