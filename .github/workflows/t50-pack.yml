@@ -119,7 +119,10 @@ jobs:
           set -euo pipefail
           brew list dtc >/dev/null 2>&1 || brew install dtc
           brew list mtools >/dev/null 2>&1 || brew install mtools
+          brew list llvm >/dev/null 2>&1 || brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
           command -v fdtget || ls /opt/homebrew/bin/fdtget
+          ls "$(brew --prefix llvm)/bin/llvm-nm"
 
       - name: Configure
         working-directory: unixnu
