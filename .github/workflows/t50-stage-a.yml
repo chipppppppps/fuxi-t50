@@ -100,7 +100,7 @@ jobs:
               lines.append(line)
           if not any(l.startswith('CONFIG_XNU_BUILD_ARCHIVES=') for l in lines):
               lines.append('CONFIG_XNU_BUILD_ARCHIVES=y')
-          lines.append('CONFIG_XNU_EXTRA_LD_ARCHIVES="{tree}/build/staga/libStageAStub.a"')
+          lines.append('CONFIG_XNU_EXTRA_LD_ARCHIVES="{tree}/../../../stage-a/libStageAStub.a"')
           (device / 'configs/fuxi_stage_a_defconfig').write_text('\n'.join(lines) + '\n')
 
           board = (device / 'board.toml').read_text()
@@ -124,17 +124,19 @@ jobs:
         working-directory: work/UniXNU
         run: |
           set -euo pipefail
-          mkdir -p build/staga
-          : > build/staga/stubs.s
-          link_stub() {
-            xcrun clang -arch arm64 -c build/staga/stubs.s -o build/staga/stubs.o
-            xcrun ar rcs build/staga/libStageAStub.a build/staga/stubs.o
-          }
+          # The archive has to live outside out/fuxi/tree: the driver reassembles that tree on every run.
+          STUBDIR=stage-a
+          mkdir -p build/staga "$STUBDIR"
           printf '.section __TEXT,__text,regular,pure_instructions\n' > build/staga/stubs.s
           printf '.globl _stage_a_placeholder\n_stage_a_placeholder:\n\tret\n' >> build/staga/stubs.s
+          link_stub() {
+            xcrun clang -arch arm64 -c build/staga/stubs.s -o "$STUBDIR/stubs.o"
+            xcrun ar rcs "$STUBDIR/libStageAStub.a" "$STUBDIR/stubs.o"
+          }
           link_stub
           for attempt in 1 2 3 4 5 6; do
             echo "== link attempt $attempt =="
+            rm -f out/fuxi/logs/kernel.log
             if ./unixnu build kernel; then
               echo "kernel linked on attempt $attempt"
               break
