@@ -114,6 +114,44 @@ jobs:
           assert "native-fuxi-ufs-root" not in board.read_text(), "the UFS root argument survived"
           print("dropped the storage arguments, so the probe cannot write the userdata partition")
 
+      - name: Let the entry probe treat nop-filled padding as empty
+        shell: python3 {0}
+        env:
+          DEVICE: ${{ github.workspace }}/fuxi
+        run: |
+          import os
+          from pathlib import Path
+
+          probe = Path(os.environ["DEVICE"], "scripts/patch-xnu-entry-probe.py")
+          text = probe.read_text()
+          helper = "\n".join([
+              "def nop_or_zero(chunk):",
+              '    """True when this run is padding: zero bytes or the AArch64 nop word."""',
+              "    for i in range(0, len(chunk), 4):",
+              '        if chunk[i:i + 4] not in (b"\\x00\\x00\\x00\\x00", b"\\x1f\\x20\\x03\\xd5"):',
+              "            return False",
+              "    return True",
+              "",
+              "",
+          ])
+          anchor = "def unixthread_pc(data):"
+          assert text.count(anchor) == 1, "the probe script moved"
+          text = text.replace(anchor, helper + anchor)
+          swaps = (
+              ("if any(data[file_offset(va):file_offset(va) + CAVE_SIZE]):",
+               "if not nop_or_zero(data[file_offset(va):file_offset(va) + CAVE_SIZE]):"),
+              ("or any(data[file_offset(PANIC_CAVE):file_offset(PANIC_CAVE_END)]):",
+               "or not nop_or_zero(data[file_offset(PANIC_CAVE):file_offset(PANIC_CAVE_END)]):"),
+              ("if any(data[file_offset(load):file_offset(load) + len(code)]):",
+               "if not nop_or_zero(data[file_offset(load):file_offset(load) + len(code)]):"),
+          )
+          for old, new in swaps:
+              assert text.count(old) == 1, "the padding check moved: " + old
+              text = text.replace(old, new)
+          probe.write_text(text)
+          compile(text, "patch-xnu-entry-probe.py", "exec")
+          print("the entry probe now accepts nop padding, which is what this kernel links")
+
       - name: Install the tools the boot image needs
         run: |
           set -euo pipefail
