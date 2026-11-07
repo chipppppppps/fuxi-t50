@@ -322,7 +322,8 @@ jobs:
               # they stay out in both modes; only the display archive comes back.
               board = Path(os.environ["DEVICE"], "board.toml")
               text = board.read_text()
-              dropped = ('"build-adreno740-kits.py', '"build-adreno740-accelerator.py')
+              dropped = ('"build-adreno740-kits.py', '"build-adreno740-accelerator.py',
+                         '"build-arm-driver.py Adreno740')
               kept = [line for line in text.splitlines()
                       if not line.strip().startswith(dropped)]
               assert len(kept) < len(text.splitlines()), "the GPU kit recipes were not in the archives list"
