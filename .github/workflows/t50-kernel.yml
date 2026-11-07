@@ -122,6 +122,36 @@ jobs:
           ast.parse(path.read_text())
           print("patched", path, "-> header beside the driver")
 
+      - name: Report the Legacy compiler output when it fails
+        shell: python3 {0}
+        env:
+          DEVICE: ${{ github.workspace }}/fuxi
+        run: |
+          import os, ast
+          from pathlib import Path
+
+          path = Path(os.environ["DEVICE"], "scripts/build-native-legacy-display.py")
+          source = path.read_text()
+          call = "print(run(['python3',ROOT/'scripts/build-arm-driver.py','NativeLegacyDisplay'],text=True),end='')"
+          assert call in source, "driver build call not found; the recipe changed"
+          guard = ("\n".join([
+              "try:",
+              "    print(run(['python3',ROOT/'scripts/build-arm-driver.py','NativeLegacyDisplay'],text=True),end='')",
+              "except subprocess.CalledProcessError as error:",
+              "    blob=error.output if isinstance(error.output,str) else (error.output or b'').decode('utf-8','replace')",
+              "    header=OUT/'OriginalLegacyFramebufferABI.h'",
+              "    head=header.read_text()[:600] if header.exists() else '<missing>'",
+              "    print('legacy header bytes', header.stat().st_size if header.exists() else 0)",
+              "    print('---- header head ----'); print(head)",
+              "    lines=blob.splitlines()",
+              "    print('---- compiler output', len(lines), 'lines ----')",
+              "    print(chr(10).join(lines[:60]))",
+              "    raise",
+          ]))
+          path.write_text(source.replace(call, guard))
+          ast.parse(path.read_text())
+          print("patched", path, "-> dump the compiler output on failure")
+
       - name: Stage the generation-0 prelink candidate
         run: |
           set -euo pipefail
