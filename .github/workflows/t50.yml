@@ -73,7 +73,6 @@ jobs:
               changed += 1
           print(f'repointed {changed} of {len(entries)} submodule(s)')
           PY
-          PY
 
       - name: Select the configuration, repoint the rewritten submodule, fetch
         working-directory: work/UniXNU
