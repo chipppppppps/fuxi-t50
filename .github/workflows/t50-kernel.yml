@@ -446,8 +446,8 @@ jobs:
             added=0
             while read -r sym; do
               [ -z "$sym" ] && continue
-              if grep -q "^_$sym:" "$STUBDIR/extra.s" 2>/dev/null; then continue; fi
-              printf '.globl _%s\n_%s:\n  mov x0, #0\n  ret\n' "$sym" "$sym" >> "$STUBDIR/extra.s"
+              if grep -q "^${sym}:" "$STUBDIR/extra.s" 2>/dev/null; then continue; fi
+              printf '.globl %s\n%s:\n  mov x0, #0\n  ret\n' "$sym" "$sym" >> "$STUBDIR/extra.s"
               added=$((added+1))
             done < "$STUBDIR/missing.txt"
             echo "added $added stub(s) for: $(tr '\n' ' ' < "$STUBDIR/missing.txt")"
