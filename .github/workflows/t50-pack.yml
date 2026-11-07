@@ -100,10 +100,11 @@ jobs:
           encoding = "utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8"
           text = raw.decode(encoding)
           lines = text.splitlines(keepends=True)
-          kept = [line for line in lines if "AdvancedLogViewLib" not in line]
-          assert len(kept) == len(lines) - 1, "the platform description no longer maps the log view library once"
+          dropped = ("AdvancedLogViewLib", "FuxiUfsLogDxe/FuxiUfsLogDxe.inf", "FuxiUefiLogDxe/FuxiUefiLogDxe.inf")
+          kept = [line for line in lines if not any(name in line for name in dropped)]
+          assert len(kept) == len(lines) - 3, "the platform description no longer names the log view library and its two drivers once"
           dsc.write_bytes("".join(kept).encode(encoding))
-          print("dropped the log view library mapping: the UniXNU package in this tree ships no such library")
+          print("dropped the log view library and the two drivers that need it: the UniXNU package in this tree ships no such library")
 
       - name: Make the persistent Data volume optional for a display probe
         shell: python3 {0}
