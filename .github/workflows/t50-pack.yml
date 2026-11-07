@@ -95,6 +95,25 @@ jobs:
                                    for line in lines) + "\n")
           print("commented out", target)
 
+      - name: Keep the display probe off the phone's storage
+        shell: python3 {0}
+        env:
+          DEVICE: ${{ github.workspace }}/fuxi
+        run: |
+          import os
+          from pathlib import Path
+
+          board = Path(os.environ["DEVICE"], "board.toml")
+          text = board.read_text()
+          off = ('"native-fuxi-ufs-root=1",',
+                 '"sheng-log=1",',
+                 '"sheng-data-persist=2",')
+          kept = [line for line in text.splitlines() if line.strip() not in off]
+          assert len(kept) < len(text.splitlines()), "none of the storage arguments was in kernel_args"
+          board.write_text("\n".join(kept) + "\n")
+          assert "native-fuxi-ufs-root" not in board.read_text(), "the UFS root argument survived"
+          print("dropped the storage arguments, so the probe cannot write the userdata partition")
+
       - name: Install the tools the boot image needs
         run: |
           set -euo pipefail
