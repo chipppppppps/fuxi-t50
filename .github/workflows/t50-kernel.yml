@@ -370,6 +370,10 @@ jobs:
           assert body.count(ram_stale) == 1, "the script no longer holds the stale ram-block path"
           body = body.replace(ram_stale,
                               "RAM_BLOCK_ARCHIVE=${XNU_NATIVE_RAM_BLOCK_ARCHIVE:-$ROOT/build/native-ram-block/libNativeRamBlock.a}")
+          ram_object_stale = "RAM_BLOCK_OBJECT=$ROOT/build/ram-block/NativeRamBlock.o"
+          assert body.count(ram_object_stale) == 1, "the script no longer holds the stale ram-block object path"
+          body = body.replace(ram_object_stale,
+                              "RAM_BLOCK_OBJECT=${XNU_NATIVE_RAM_BLOCK_OBJECT:-$ROOT/build/native-ram-block/NativeRamBlock.o}")
           script.write_text(body)
           print("display mode %s: kept the display archive" % ("real" if real else "stub"),
                 "and pointed UFS at the built archive")
