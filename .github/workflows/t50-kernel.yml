@@ -104,6 +104,24 @@ jobs:
           ast.parse(path.read_text())
           print("patched", path, "-> advisory audit")
 
+      - name: Expose the generated Legacy ABI header beside its driver
+        shell: python3 {0}
+        env:
+          DEVICE: ${{ github.workspace }}/fuxi
+        run: |
+          import os, ast
+          from pathlib import Path
+
+          path = Path(os.environ["DEVICE"], "scripts/build-native-legacy-display.py")
+          source = path.read_text()
+          write = "(OUT/'OriginalLegacyFramebufferABI.h').write_text(header)"
+          assert write in source, "header write not found; the recipe changed"
+          beside = ("(OUT/'OriginalLegacyFramebufferABI.h').write_text(header);"
+                    "(ROOT/'drivers/GopFramebuffer/OriginalLegacyFramebufferABI.h').write_text(header)")
+          path.write_text(source.replace(write, beside))
+          ast.parse(path.read_text())
+          print("patched", path, "-> header beside the driver")
+
       - name: Stage the generation-0 prelink candidate
         run: |
           set -euo pipefail
