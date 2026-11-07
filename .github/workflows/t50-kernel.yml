@@ -185,6 +185,55 @@ jobs:
           brew list llvm >/dev/null 2>&1 || brew install llvm
           echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
 
+      - name: Stub the display driver so the rest of the chain links
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/unixnu/stage-a"
+          cat > "$GITHUB_WORKSPACE/unixnu/stage-a/stubs.s" <<'ASM'
+          .text
+          .globl _native_legacy_display_probe
+          _native_legacy_display_probe:
+            ret
+          .globl _native_legacy_display_late_probe
+          _native_legacy_display_late_probe:
+            ret
+          .globl _native_legacy_display_allocate
+          _native_legacy_display_allocate:
+            mov x0, #0
+            ret
+          ASM
+          xcrun clang -target arm64-apple-ios17.0 -c "$GITHUB_WORKSPACE/unixnu/stage-a/stubs.s" -o "$GITHUB_WORKSPACE/unixnu/stage-a/stubs.o"
+          xcrun ar rcs "$GITHUB_WORKSPACE/unixnu/stage-a/libStageAStub.a" "$GITHUB_WORKSPACE/unixnu/stage-a/stubs.o"
+          xcrun nm "$GITHUB_WORKSPACE/unixnu/stage-a/libStageAStub.a" | head -10
+
+      - name: Drop the display archive and link the stub instead
+        shell: python3 {0}
+        env:
+          DEVICE: ${{ github.workspace }}/fuxi
+        run: |
+          import os
+          from pathlib import Path
+
+          board = Path(os.environ["DEVICE"], "board.toml")
+          text = board.read_text()
+          drop = " build-native-legacy-display.py"
+          kept = [line for line in text.splitlines() if drop not in line]
+          assert len(kept) < len(text.splitlines()), "legacy display recipe not in the archives list"
+          board.write_text("\n".join(kept) + "\n")
+
+          cfg = Path(os.environ["DEVICE"], "configs/fuxi_full_defconfig")
+          lines = cfg.read_text().splitlines()
+          extra = 'CONFIG_XNU_EXTRA_LD_ARCHIVES="'
+          for i, line in enumerate(lines):
+              if line.startswith(extra):
+                  assert line.endswith('"'), f"unexpected archives line: {line}"
+                  lines[i] = line[:-1] + ' {tree}/../../../stage-a/libStageAStub.a"'
+                  break
+          else:
+              raise SystemExit("no CONFIG_XNU_EXTRA_LD_ARCHIVES line")
+          cfg.write_text("\n".join(lines) + "\n")
+          print("dropped the display archive and appended the stub to the link line")
+
       - name: Configure
         working-directory: unixnu
         run: |
