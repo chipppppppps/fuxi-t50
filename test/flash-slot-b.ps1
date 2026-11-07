@@ -86,7 +86,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Say ""
-Say "Done. The phone now boots the probe image from slot b."
+Say "Rebooting into slot b..."
+& $fastboot -s $serial reboot
+Start-Sleep -Seconds 3
+
+Say ""
+Say "The phone is booting the probe image from slot b."
 Say "Watch the screen: bands, then text or a progress line, then it either stays there or panics."
 Say "Tap the screen once to make the touch probe print its diagnostic rows."
 Say "To go back to Android: run back-to-a.ps1, or 'fastboot --set-active=a' plus a reboot."
