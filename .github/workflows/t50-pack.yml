@@ -42,6 +42,14 @@ jobs:
           ref: old
           path: uefi-fuxi
 
+      - name: Bring the device binaries the platform description names
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/uefi-fuxi"
+          git submodule update --init --depth 1 -- Binaries
+          test -f Binaries/nuwa/QcomPkg/Drivers/EnvDxe/EnvDxe.inf
+          echo "device binaries: $(du -sh Binaries | cut -f1)"
+
       - name: Select Xcode
         run: |
           for app in /Applications/Xcode_26*.app; do
