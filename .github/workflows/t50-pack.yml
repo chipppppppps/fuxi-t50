@@ -147,6 +147,24 @@ jobs:
           assert "native-fuxi-ufs-root" not in board.read_text(), "the UFS root argument survived"
           print("dropped the storage arguments, so the probe cannot write the userdata partition")
 
+      - name: Keep the entry bars off the frame buffer for this probe
+        shell: python3 {0}
+        env:
+          DEVICE: ${{ github.workspace }}/fuxi
+        run: |
+          import os
+          from pathlib import Path
+
+          patch = Path(os.environ["DEVICE"], "scripts/patch-xnu-entry-probe.py")
+          text = patch.read_text()
+          opener = 'PAINT = """'
+          start = text.index(opener)
+          end = text.index('"""', start + len(opener))
+          assert "stp w6, w6" in text[start:end], "the paint template moved"
+          patch.write_text(text[:start] + 'PAINT = ""' + text[end + 3:])
+          assert "stp w6, w6" not in patch.read_text(), "the paint template survived"
+          print("the stage bars paint nothing: this run times the reset instead")
+
       - name: Ask the entry probe to reset eight seconds into the kernel
         shell: python3 {0}
         env:
