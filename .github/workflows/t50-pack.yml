@@ -165,7 +165,7 @@ jobs:
           assert "stp w6, w6" not in patch.read_text(), "the paint template survived"
           print("the stage bars paint nothing: this run times the reset instead")
 
-      - name: Ask the entry probe to reset eight seconds into the kernel
+      - name: Ask the entry probe to reset thirty-two seconds into the kernel
         shell: python3 {0}
         env:
           DEVICE: ${{ github.workspace }}/fuxi
@@ -178,13 +178,13 @@ jobs:
           header = "[payload]\n"
           assert text.count(header) == 1, "the payload section moved"
           assert "entry_probe_reset_delay" not in text, "the probe delay is already set"
-          text = text.replace(header, header + "entry_probe_reset_delay = 8\n")
+          text = text.replace(header, header + "entry_probe_reset_delay = 32\n")
           screen = "panic_screen = true"
           assert text.count(screen) == 1, "the panic screen flag moved"
           text = text.replace(screen, "panic_screen = false")
           board.write_text(text)
-          assert "entry_probe_reset_delay = 8" in board.read_text(), "the delay did not land"
-          print("the entry probe resets eight seconds after the MMU is on, without a panic screen")
+          assert "entry_probe_reset_delay = 32" in board.read_text(), "the delay did not land"
+          print("the entry probe resets thirty-two seconds after the MMU is on, without a panic screen")
 
       - name: Let the entry probe treat nop-filled padding as empty
         shell: python3 {0}
