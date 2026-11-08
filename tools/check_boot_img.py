@@ -2,6 +2,7 @@
 import hashlib
 import struct
 import sys
+import zlib
 from pathlib import Path
 
 MAGIC = b"ANDROID!"
@@ -29,11 +30,16 @@ def main(path):
     offset = page
     body = len(data) - offset
     print(f"body            {body:,} bytes")
-    print(f"sizes agree     {body == kernel_size + ramdisk_size}")
-    # the payload is a raw FAT image: look for its volume label near the start
-    payload = data[offset + kernel_size:offset + kernel_size + ramdisk_size]
-    print(f"ramdisk head    {payload[:16]!r}")
-    print(f"FUXIESP label   {b'FUXIESP' in payload[:65536]}")
+    kernel = data[offset:offset + kernel_size]
+    tail = data[offset + kernel_size:]
+    try:
+        plain = zlib.decompress(kernel, 47)
+        wrapper = "gzip" if kernel[0] == 0x1F and kernel[1] == 0x8B else "zlib"
+        print(f"inflated        {len(plain):,} bytes  ({wrapper})")
+        print(f"FUXIESP label   {b'FUXIESP' in plain}")
+    except zlib.error as error:
+        print(f"inflate failed  {error}")
+    print(f"tail            {len(tail):,} bytes  (dtb: {tail[-4096:][:4] == b'd00d'})")
 
 
 if __name__ == "__main__":
