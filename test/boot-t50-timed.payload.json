@@ -1,0 +1,14 @@
+{
+  "kernel_sha256": "bd43c63656c6cce679496300274e46bc7071d355602334f9efe46e116c299708",
+  "payload_kernel_sha256": "1abe6b5e0c3cc09e17f715106e5e14c32f0db94a9e93142a7e808f9226d8e93a",
+  "adt_sha256": "19a0d358e1223c8ee87d0dc7de601707c9ca5fdfe80d35807ff9b310ef2373fb",
+  "kernel_args": "serial=3 debug=0x14e kt_fixed_zones=120 offline-apfs-load=1 -apfs_shared_datavolume offline-key-events=1 offline-legacy-register=1 offline-legacy-gop=1 offline-legacy-unit-scale=2 offline-legacy-pm=1 offline-legacy-validate=1 offline-legacy-transfer=1 offline-legacy-cpu-present=1 offline-legacy-phase=4 offline-mobile-graphics-client=1 offline-mobile-graphics-load=1 boot-ui-focus4=SpringBoard sheng-pmgr=2 sheng-gpu-metal=1 sheng-gpu-addon=1 sheng-gpu-dcvs=1 sheng-fb-gpu=1 sheng-vsync=120 sheng-dpu=3 armcpu-spi-ipi=1 sheng-smp=1 sheng-cpufreq=4 sheng-aks=1 sheng-gpu-power=9 sheng-disable-watchdogd=1 sheng-disable-jobs=com.apple.identityservicesd,com.apple.locationd,com.apple.CommCenter,com.apple.bluetoothd,com.apple.liveactivitiesd sheng-lite=1 qcom-usb-debug=1 -no_slto_panic ml-timeout-lock-panic-scale=40 fuxi-touch-stage=4 fuxi-touch-hid=1 fuxi-touch-hw=7 fuxi-buttons=1 sheng-backlight=1 fuxi-backlight=dsi",
+  "trust_cache_sha256": "7416ca4f8377146626bb284e2133c76bee6cb4e3ee0af5d648b186235a7323a7",
+  "gpu_addon_sha256": null,
+  "data_ramdisk_sha256": null,
+  "skip_setup": false,
+  "panic_screen": false,
+  "payload_sha256": "79bcf78391b366aef3a76d33c01ad4b905ad96df3a0678befdb824c9fdcbc317",
+  "payload_bytes": 184549376,
+  "hardware_tested": false
+}
