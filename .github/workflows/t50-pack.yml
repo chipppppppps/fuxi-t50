@@ -147,6 +147,23 @@ jobs:
           assert "native-fuxi-ufs-root" not in board.read_text(), "the UFS root argument survived"
           print("dropped the storage arguments, so the probe cannot write the userdata partition")
 
+      - name: Ask the entry probe to reset eight seconds into the kernel
+        shell: python3 {0}
+        env:
+          DEVICE: ${{ github.workspace }}/fuxi
+        run: |
+          import os
+          from pathlib import Path
+
+          board = Path(os.environ["DEVICE"], "board.toml")
+          text = board.read_text()
+          header = "[payload]\n"
+          assert text.count(header) == 1, "the payload section moved"
+          assert "entry_probe_reset_delay" not in text, "the probe delay is already set"
+          board.write_text(text.replace(header, header + "entry_probe_reset_delay = 8\n"))
+          assert "entry_probe_reset_delay = 8" in board.read_text(), "the delay did not land"
+          print("the entry probe resets eight seconds after the MMU is on")
+
       - name: Let the entry probe treat nop-filled padding as empty
         shell: python3 {0}
         env:
